@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "name": "关卡2",
+  "width": 4,
+  "height": 3,
+  "timeLimit": 60,
+  "palette": [
+    "red",
+    "green",
+    "blue",
+    "yellow"
+  ],
+  "cells": [
+    {
+      "c": "yellow",
+      "n": 4
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "green",
+      "n": 0
+    },
+    {
+      "c": "blue",
+      "n": 3
+    },
+    {
+      "c": "blue",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "green",
+      "n": 0
+    },
+    {
+      "c": null,
+      "n": 0
+    },
+    {
+      "c": "blue",
+      "n": 0
+    },
+    {
+      "c": "green",
+      "n": 4
+    },
+    {
+      "c": "green",
+      "n": 0
+    }
+  ]
+}

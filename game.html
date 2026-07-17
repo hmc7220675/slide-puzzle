@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>滑块填充 Puzzle · 核心玩法</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif;
+    margin: 0; padding: 16px; background: #f4f6f8; color: #222;
+  }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .panel {
+    background: #fff; border-radius: 10px; padding: 14px;
+    margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .topbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+  .topbar .item { font-size: 15px; }
+  #hearts { font-size: 18px; letter-spacing: 2px; }
+  #timer { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .row + .row { margin-top: 10px; }
+  button {
+    padding: 7px 12px; border: none; border-radius: 6px;
+    background: #eef1f4; color: #333; cursor: pointer; font-size: 14px;
+  }
+  button:hover { background: #e2e6ea; }
+  button.primary { background: #3498db; color: #fff; }
+  button.primary:hover { background: #2c82c0; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* 关卡选择按钮 */
+  button.lv-btn { min-width: 42px; }
+  button.lv-btn.current { background: #3498db; color: #fff; }
+
+  /* 棋盘 */
+  /* 移动端适配：全局布局 */
+  body { padding: 10px; }
+  .panel { padding: 10px; margin-bottom: 10px; }
+  h1 { font-size: 17px; margin-bottom: 8px; }
+  .topbar { gap: 10px; }
+  .topbar .item { font-size: 13px; }
+  #hearts { font-size: 15px; }
+  .row { gap: 6px; flex-wrap: wrap; }
+  button { padding: 6px 10px; font-size: 13px; }
+  button.lv-btn { min-width: 36px; padding: 5px 8px; font-size: 12px; }
+  .hint { font-size: 11px; }
+
+  /* 移动端：当屏幕很窄时，缩小操作面板 */
+  @media (max-width: 480px) {
+    body { padding: 6px; }
+    .panel { padding: 8px; margin-bottom: 8px; }
+    h1 { font-size: 15px; }
+    .hint { display: none; } /* 手机上隐藏说明文字，节省空间 */
+  }
+
+  /* 平板/横屏 */
+  @media (max-height: 500px) {
+    body { padding: 6px; }
+    .panel { padding: 6px; margin-bottom: 6px; }
+  }
+  /* 棋盘外层：自适应宽度，居中显示 */
+  #board {
+    position: relative; /* 供动画方块绝对定位 */
+    display: grid; gap: 3px; background: #d9dee3; padding: 6px;
+    border-radius: 8px; width: max-content; user-select: none;
+    touch-action: none; /* 防止手机上拖动时页面滚动 */
+    margin: 0 auto; /* 小屏幕时居中 */
+    /* 移动端自适应：棋盘宽度不超过屏幕的 95vw */
+    max-width: 95vw;
+  }
+
+  .cell {
+    /* 格子尺寸由 JS 计算并写入 CSS 变量，由 JS 根据屏幕宽度动态更新 */
+    width: var(--cell-size, 44px);
+    height: var(--cell-size, 44px);
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    /* 字体也随格子缩放 */
+    font-size: calc(var(--cell-size, 44px) * 0.36);
+    color: #fff;
+    /* 确保格子永远是方的 */
+    aspect-ratio: 1;
+  }
+  /* 棋盘外（墙）：斜纹纹理，和编辑器一致 */
+  .cell.void {
+    background: repeating-linear-gradient(45deg, #e3e8ec, #e3e8ec 6px, #ccd4da 6px, #ccd4da 12px);
+    box-shadow: inset 0 0 0 1px #b9c2c9;
+  }
+  .cell.block {
+    cursor: grab;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.55), 0 1px 2px rgba(0,0,0,.25);
+  }
+  .cell.block:active { cursor: grabbing; }
+  /* 新填充的格子：缩放弹出 */
+  @keyframes pop { 0% { transform: scale(.25); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+  .cell.filled-pop { animation: pop .28s ease-out; }
+
+  /* 滑动中的动画方块（浮在棋盘上，连续移动） */
+  .float-block {
+    position: absolute;
+    width: var(--cell-size, 44px);
+    height: var(--cell-size, 44px);
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    font-size: calc(var(--cell-size, 44px) * 0.36);
+    color: #fff; z-index: 5; pointer-events: none;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.55), 0 3px 8px rgba(0,0,0,.35);
+  }
+
+  .hint { font-size: 12px; color: #888; margin-top: 8px; line-height: 1.6; }
+  .status { font-size: 13px; color: #c0392b; margin-top: 8px; min-height: 18px; }
+
+  /* 胜负遮罩 */
+  #overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: none; align-items: center; justify-content: center; z-index: 10;
+  }
+  #overlay .box {
+    background: #fff; border-radius: 14px; padding: 26px 30px; text-align: center;
+    min-width: 240px; box-shadow: 0 8px 30px rgba(0,0,0,.3);
+  }
+  #overlay .ot { font-size: 26px; margin-bottom: 8px; }
+  #overlay .om { font-size: 14px; color: #555; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+  <h1>滑块填充 Puzzle · 核心玩法</h1>
+
+  <!-- ===== 顶部状态 ===== -->
+  <div class="panel">
+    <div class="topbar">
+      <div class="item">关卡：<b id="lvName2">—</b></div>
+      <div class="item" id="hearts">❤❤❤</div>
+      <div class="item">时间：<span id="timer">00:00</span></div>
+    </div>
+  </div>
+
+  <!-- ===== 关卡选择 ===== -->
+  <div class="panel">
+    <div class="row">
+      <label>选择关卡</label>
+      <button class="lv-btn current" data-idx="0">1</button>
+      <button class="lv-btn" data-idx="1">2</button>
+      <button class="lv-btn" data-idx="2">3</button>
+      <button class="lv-btn" data-idx="3">4</button>
+      <button class="lv-btn" data-idx="4">5</button>
+    </div>
+  </div>
+
+  <!-- ===== 操作 ===== -->
+  <div class="panel">
+    <div class="row">
+      <button id="btnPrev" disabled>上一关</button>
+      <button id="btnNext">下一关</button>
+      <button id="btnRestart" class="primary">重新开始</button>
+      <button id="btnImport">导入关卡 .json</button>
+      <input type="file" id="fileInput" accept=".json,application/json" style="display:none">
+    </div>
+    <div class="hint">
+      玩法：在<b>带数字的方块</b>上按住，朝一个方向拖动来滑动。<br>
+      · 方块会<b>连续滑动</b>到终点，途中每经过一格中心，数量 -1 并把<b>同色空格</b>以缩放方式填满。<br>
+      · 碰到<b>异色空格</b> → 扣 1 颗心，并退回本次操作前的状态。<br>
+      · 碰到<b>边缘 / 已填格 / 空白处</b> → 正常停下。数量减到 1 也立即停。<br>
+      · 目标：把<b>所有彩色空格</b>都填满对应颜色；3 颗心用完或时间到则失败。
+    </div>
+    <div id="status" class="status"></div>
+  </div>
+
+  <!-- ===== 棋盘 ===== -->
+  <div class="panel">
+    <div id="board"></div>
+  </div>
+
+  <!-- ===== 胜负遮罩 ===== -->
+  <div id="overlay">
+    <div class="box">
+      <div class="ot">提示</div>
+      <div class="om"></div>
+      <button id="btnReplay" class="primary" style="display:none" onclick="document.getElementById('btnRestart').click()">再玩一次</button>
+      <button id="btnNextLevel" class="primary" style="display:none" onclick="goNextLevel()">下一关</button>
+    </div>
+  </div>
+
+<script>
+// 调色板（与编辑器保持一致）
+const PALETTE = {
+  red:    { solid: '#e74c3c', pale: '#f9c9c2' },
+  green:  { solid: '#2ecc71', pale: '#c8f0d8' },
+  blue:   { solid: '#3498db', pale: '#cfe8f7' },
+  yellow: { solid: '#f1c40f', pale: '#fbedb0' },
+};
+
+// ========== 内嵌关卡配置（关卡1-5）==========
+const LEVELS = [
+  {
+    version: 1, name: "关卡1", width: 4, height: 2, timeLimit: 60,
+    palette: ["red","green","blue","yellow"],
+    cells: [
+      {c:"yellow",n:8},{c:"yellow",n:0},{c:"yellow",n:0},{c:"yellow",n:0},
+      {c:"yellow",n:0},{c:"yellow",n:0},{c:"yellow",n:0},{c:"yellow",n:0}
+    ]
+  },
+  {
+    version: 1, name: "关卡2", width: 4, height: 3, timeLimit: 60,
+    palette: ["red","green","blue","yellow"],
+    cells: [
+      {c:"yellow",n:4},{c:"yellow",n:0},{c:"yellow",n:0},{c:"green",n:0},
+      {c:"blue",n:3},{c:"blue",n:0},{c:"yellow",n:0},{c:"green",n:0},
+      {c:null,n:0},{c:"blue",n:0},{c:"green",n:4},{c:"green",n:0}
+    ]
+  },
+  {
+    version: 1, name: "关卡3", width: 4, height: 4, timeLimit: 60,
+    palette: ["red","green","blue","yellow"],
+    cells: [
+      {c:"yellow",n:0},{c:"blue",n:4},{c:"blue",n:0},{c:"red",n:6},
+      {c:"yellow",n:0},{c:"blue",n:0},{c:"blue",n:0},{c:"red",n:0},
+      {c:"yellow",n:0},{c:"yellow",n:6},{c:"red",n:0},{c:"red",n:0},
+      {c:"yellow",n:0},{c:"yellow",n:0},{c:"red",n:0},{c:"red",n:0}
+    ]
+  },
+  {
+    version: 1, name: "关卡4", width: 5, height: 5, timeLimit: 60,
+    palette: ["red","green","blue","yellow"],
+    cells: [
+      {c:"red",n:0},{c:"red",n:0},{c:"green",n:0},{c:"yellow",n:0},{c:"yellow",n:0},
+      {c:"red",n:0},{c:"red",n:4},{c:"green",n:0},{c:"yellow",n:0},{c:"yellow",n:0},
+      {c:"green",n:7},{c:"green",n:0},{c:"green",n:0},{c:null,n:0},{c:"yellow",n:0},
+      {c:"green",n:0},{c:"green",n:0},{c:"blue",n:6},{c:"blue",n:0},{c:"yellow",n:0},
+      {c:"blue",n:0},{c:"blue",n:0},{c:"blue",n:0},{c:"blue",n:0},{c:"yellow",n:7}
+    ]
+  },
+  {
+    version: 1, name: "关卡5", width: 12, height: 10, timeLimit: 180,
+    palette: ["red","green","blue","yellow"],
+    cells: [
+      {c:null,n:0},{c:"red",n:7},{c:"red",n:0},{c:"red",n:0},{c:null,n:0},{c:null,n:0},{c:null,n:0},{c:null,n:0},{c:"green",n:0},{c:"green",n:0},{c:"green",n:0},{c:null,n:0},
+      {c:"yellow",n:6},{c:"yellow",n:0},{c:"yellow",n:0},{c:"red",n:0},{c:"red",n:0},{c:null,n:0},{c:null,n:0},{c:"green",n:0},{c:"green",n:0},{c:"yellow",n:0},{c:"yellow",n:0},{c:"yellow",n:0},
+      {c:"yellow",n:0},{c:"yellow",n:0},{c:"yellow",n:0},{c:"red",n:0},{c:"red",n:0},{c:"green",n:8},{c:"green",n:0},{c:"green",n:0},{c:"yellow",n:7},{c:"yellow",n:0},{c:"yellow",n:0},{c:"yellow",n:0},
+      {c:"green",n:8},{c:"green",n:0},{c:"green",n:0},{c:"blue",n:0},{c:"green",n:6},{c:"red",n:0},{c:"red",n:0},{c:"red",n:0},{c:"red",n:0},{c:"green",n:0},{c:"green",n:0},{c:"green",n:0},
+      {c:"green",n:0},{c:"green",n:0},{c:"green",n:0},{c:"blue",n:0},{c:"green",n:0},{c:"red",n:0},{c:"red",n:0},{c:"red",n:0},{c:"red",n:0},{c:"green",n:6},{c:"green",n:0},{c:"green",n:0},
+      {c:null,n:0},{c:"green",n:0},{c:"green",n:0},{c:"blue",n:0},{c:"green",n:0},{c:"red",n:0},{c:"red",n:10},{c:"blue",n:0},{c:"blue",n:0},{c:"blue",n:0},{c:"blue",n:4},{c:null,n:0},
+      {c:null,n:0},{c:null,n:0},{c:"blue",n:5},{c:"blue",n:0},{c:"green",n:0},{c:"yellow",n:0},{c:"yellow",n:0},{c:"yellow",n:0},{c:"red",n:0},{c:"red",n:0},{c:null,n:0},{c:null,n:0},
+      {c:null,n:0}, {c:null,n:0}, {c:null,n:0}, {c:"green",n:0}, {c:"green",n:0}, {c:"yellow",n:0}, {c:"yellow",n:7}, {c:"yellow",n:0}, {c:"red",n:3}, {c:null,n:0}, {c:null,n:0}, {c:null,n:0},
+      {c:null,n:0}, {c:null,n:0}, {c:null,n:0}, {c:null,n:0}, {c:"blue",n:5}, {c:"blue",n:0}, {c:"blue",n:0}, {c:"yellow",n:0}, {c:null,n:0}, {c:null,n:0}, {c:null,n:0}, {c:null,n:0},
+      {c:null,n:0}, {c:null,n:0}, {c:null,n:0}, {c:null,n:0}, {c:null,n:0}, {c:"blue",n:0}, {c:"blue",n:0}, {c:null,n:0}, {c:null,n:0}, {c:null,n:0}, {c:null,n:0}, {c:null,n:0}
+    ]
+  }
+];
+
+const boardEl = document.getElementById('board');
+const fileInput = document.getElementById('fileInput');
+
+// 游戏状态
+const state = {
+  raw: null,        // 原始关卡数据（用于重开）
+  name: '', width: 0, height: 0, timeLimit: 0,
+  cells: [],        // { c, filled, block, n }
+  hearts: 3, timeLeft: 0, over: false,
+  currentLevelIdx: 0 // 当前关卡索引
+};
+
+let timerId = null;
+let animating = false; // 滑动动画进行中，禁止重复操作
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function showStatus(msg) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  setTimeout(() => { el.textContent = ''; }, 3500);
+}
+
+// 更新关卡选择按钮状态
+function updateLevelButtons() {
+  document.querySelectorAll('.lv-btn').forEach(btn => {
+    const idx = +btn.dataset.idx;
+    btn.classList.toggle('current', idx === state.currentLevelIdx);
+  });
+  document.getElementById('btnPrev').disabled = state.currentLevelIdx === 0;
+  document.getElementById('btnNext').disabled = state.currentLevelIdx >= LEVELS.length - 1;
+}
+
+// 载入一关
+function loadLevel(data) {
+  state.raw = data;
+  state.name = data.name || '关卡';
+  state.width = data.width;
+  state.height = data.height;
+  state.timeLimit = data.timeLimit || 120;
+  state.cells = data.cells.map(c => {
+    const isBlock = (c.c !== null && c.c !== undefined) && (c.n >= 1);
+    return { c: (c.c === undefined ? null : c.c), filled: isBlock, block: isBlock, n: isBlock ? c.n : 0 };
+  });
+  state.hearts = 3;
+  state.over = false;
+  animating = false;
+  hideOverlay();
+  startTimer();
+  render();
+}
+
+// 载入内嵌关卡（按索引）
+function loadEmbeddedLevel(idx) {
+  if (idx < 0 || idx >= LEVELS.length) return;
+  state.currentLevelIdx = idx;
+  loadLevel(LEVELS[idx]);
+  updateLevelButtons();
+}
+
+// 根据屏幕宽度和棋盘尺寸，计算最佳格子尺寸（px）
+function calcCellSize() {
+  const W = state.width, H = state.height;
+  // 棋盘区域可用宽度：屏幕宽度减去左右 padding（各 12px）
+  const availW = Math.min(window.innerWidth - 24, 700);
+  const availH = window.innerHeight - 200; // 减去顶部状态栏、操作面板高度
+  // 每个格子的最大尺寸
+  const maxByW = Math.floor((availW - (W + 1) * 3) / W); // 减 gap 和 padding
+  const maxByH = Math.floor((availH - (H + 1) * 3) / H);
+  // 取较小者，但最小不低于 28px，最大不超过 60px
+  return Math.min(60, Math.max(28, Math.min(maxByW, maxByH)));
+}
+
+// 绘制
+function render() {
+  const sz = calcCellSize();
+  document.getElementById('lvName2').textContent = state.name;
+  document.getElementById('hearts').textContent =
+    '❤'.repeat(state.hearts) + '🤍'.repeat(3 - state.hearts);
+  // 设置 CSS 变量，所有格子跟随这个尺寸
+  boardEl.style.setProperty('--cell-size', sz + 'px');
+  boardEl.style.gridTemplateColumns = 'repeat(' + state.width + ', ' + sz + 'px)';
+  boardEl.innerHTML = '';
+  state.cells.forEach((cell, i) => {
+    const el = document.createElement('div');
+    el.className = 'cell';
+    el.dataset.i = i;
+    if (cell.c === null) {
+      el.classList.add('void');
+    } else if (cell.block) {
+      el.style.background = PALETTE[cell.c].solid;
+      el.classList.add('block');
+      if (cell.n >= 2) el.textContent = cell.n;
+    } else if (cell.filled) {
+      el.style.background = PALETTE[cell.c].solid;
+    } else {
+      el.style.background = PALETTE[cell.c].pale;
+    }
+    boardEl.appendChild(el);
+  });
+}
+
+// 计时
+function startTimer() {
+  clearInterval(timerId);
+  state.timeLeft = state.timeLimit;
+  updateTimer();
+  timerId = setInterval(() => {
+    if (state.over) return;
+    state.timeLeft--;
+    if (state.timeLeft <= 0) {
+      state.timeLeft = 0;
+      updateTimer();
+      clearInterval(timerId);
+      lose('⏰ 时间到');
+      return;
+    }
+    updateTimer();
+  }, 1000);
+}
+function updateTimer() {
+  const t = state.timeLeft;
+  const m = String(Math.floor(t / 60)).padStart(2, '0');
+  const s = String(t % 60).padStart(2, '0');
+  document.getElementById('timer').textContent = m + ':' + s;
+}
+
+// 先看一步会怎么走（不改动状态），返回计划
+function computePlan(startIdx, dir) {
+  const W = state.width, H = state.height;
+  const path = [];          // 会沿途填充的同色格（顺序）
+  let penalty = false, penaltyCell = null;
+  let idx = startIdx, count = state.cells[idx].n;
+  const color = state.cells[idx].c;
+  while (count > 1) {
+    const x = idx % W, y = Math.floor(idx / W);
+    const nx = x + dir.dx, ny = y + dir.dy;
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) break;       // 边缘
+    const ni = ny * W + nx, nc = state.cells[ni];
+    if (nc.c === null) break;        // 空白(void) 当作墙
+    if (nc.filled) break;            // 已占用格
+    if (nc.c !== color) { penalty = true; penaltyCell = ni; break; } // 异色空格
+    path.push(ni); count -= 1; idx = ni;
+    if (count === 1) break;          // 数量减到 1 立即停
+  }
+  return { path, penalty, penaltyCell, finalIdx: idx, finalCount: count, color };
+}
+
+// 提交一次正常的滑动结果到状态
+function commitPlan(plan, startIdx) {
+  plan.path.forEach(i => { state.cells[i].filled = true; });
+  state.cells[startIdx].block = false; // 原点变为已填充（拖尾）
+  state.cells[plan.finalIdx].block = true;
+  state.cells[plan.finalIdx].n = plan.finalCount;
+}
+
+// 带动画的滑动（连续移动）
+async function doSlide(startIdx, dir) {
+  if (animating || state.over) return;
+  const plan = computePlan(startIdx, dir);
+  if (plan.path.length === 0 && !plan.penalty) return; // 正常停在边界/已占用，无需动画
+
+  animating = true;
+  const boardRect = boardEl.getBoundingClientRect();
+  const startRect = boardEl.children[startIdx].getBoundingClientRect();
+  const left0 = startRect.left - boardRect.left;
+  const top0 = startRect.top - boardRect.top;
+
+  // 创建一个浮在棋盘上的动画方块
+  const fb = document.createElement('div');
+  fb.className = 'float-block';
+  fb.style.background = PALETTE[plan.color].solid;
+  let shown = state.cells[startIdx].n;
+  fb.textContent = shown >= 2 ? shown : '';
+  fb.style.left = left0 + 'px';
+  fb.style.top = top0 + 'px';
+  fb.style.transform = 'translate(0px,0px)';
+  boardEl.appendChild(fb);
+
+  // 起始格变为已填充（方块离开的拖尾）
+  const startCell = boardEl.children[startIdx];
+  startCell.style.background = PALETTE[plan.color].solid;
+  startCell.classList.remove('block');
+  startCell.textContent = '';
+
+  const path = plan.path;
+  const L = path.length;
+  if (L > 0) {
+    // 终点偏移
+    const lastRect = boardEl.children[path[L - 1]].getBoundingClientRect();
+    const endX = lastRect.left - boardRect.left - left0;
+    const endY = lastRect.top - boardRect.top - top0;
+    const perCell = 95;                 // 每格约 95ms，匀速连续滑动
+    const total = perCell * L;
+    // 强制重排，确保起始态已落定，过渡才会播放
+    void fb.offsetWidth;
+    fb.style.transition = 'transform ' + total + 'ms linear';
+    fb.style.transform = 'translate(' + endX + 'px,' + endY + 'px)';
+    // 在每格中心时刻：数字 -1，该格以缩放方式填满
+    for (let i = 0; i < L; i++) {
+      const t = Math.round((i + 1) * perCell);
+      setTimeout(() => {
+        shown -= 1;
+        fb.textContent = shown >= 2 ? shown : '';
+        const cellEl = boardEl.children[path[i]];
+        cellEl.style.background = PALETTE[plan.color].solid;
+        cellEl.classList.add('filled-pop');
+      }, t);
+    }
+    await sleep(total);
+  }
+
+  if (plan.penalty) {
+    // 撞异色：朝异色格连续滑过去、轻推一下再弹回
+    const lastRect = boardEl.children[plan.finalIdx].getBoundingClientRect();
+    const pcRect = boardEl.children[plan.penaltyCell].getBoundingClientRect();
+    const hx = (pcRect.left - lastRect.left) / 2;
+    const hy = (pcRect.top - lastRect.top) / 2;
+    const finOffX = lastRect.left - boardRect.left - left0;
+    const finOffY = lastRect.top - boardRect.top - top0;
+    fb.style.transition = 'transform .12s ease-out';
+    fb.style.transform = 'translate(' + (finOffX + hx) + 'px,' + (finOffY + hy) + 'px)';
+    await sleep(140);
+    fb.style.transition = 'transform .22s ease-out';
+    fb.style.transform = 'translate(0px,0px)';
+    await sleep(240);
+    // 回滚：扣心 + 恢复显示
+    state.hearts -= 1;
+    showStatus('💥 撞到异色！扣 1 颗心');
+    fb.remove();
+    render();
+    animating = false;
+    if (state.hearts <= 0) lose('💔 3 颗心都用完了');
+    return;
+  }
+
+  // 正常结束：提交状态并刷新
+  commitPlan(plan, startIdx);
+  fb.remove();
+  render();
+  animating = false;
+  checkWin();
+}
+
+// 胜利判定：所有彩色格都 filled
+function checkWin() {
+  const win = state.cells.every(c => c.c === null || c.filled);
+  if (win) {
+    clearInterval(timerId);
+    state.over = true;
+    const hasNext = state.currentLevelIdx >= 0 && state.currentLevelIdx < LEVELS.length - 1;
+    showOverlay('🎉 过关！', '所有空格都填满了，干得漂亮！', hasNext);
+  }
+}
+
+// 遮罩（hasNext=true 显示下一关按钮，否则显示重玩按钮）
+function showOverlay(title, msg, hasNext = false) {
+  const o = document.getElementById('overlay');
+  o.querySelector('.ot').textContent = title;
+  o.querySelector('.om').textContent = msg;
+  document.getElementById('btnReplay').style.display = hasNext ? 'none' : 'inline-block';
+  document.getElementById('btnNextLevel').style.display = hasNext ? 'inline-block' : 'none';
+  o.style.display = 'flex';
+}
+function hideOverlay() { document.getElementById('overlay').style.display = 'none'; }
+
+// 点击遮罩里的「下一关」按钮
+function goNextLevel() {
+  if (state.currentLevelIdx >= 0 && state.currentLevelIdx < LEVELS.length - 1) {
+    loadEmbeddedLevel(state.currentLevelIdx + 1);
+  }
+}
+function lose(reason) {
+  state.over = true;
+  showOverlay('💔 失败', reason);
+}
+
+// 拖动交互（鼠标 + 触摸通用）
+let dragging = false, startX = 0, startY = 0, startIdx = -1;
+boardEl.addEventListener('pointerdown', e => {
+  if (state.over || animating) return;
+  const t = e.target.closest('.cell');
+  if (!t) return;
+  const i = +t.dataset.i;
+  if (!state.cells[i] || !state.cells[i].block) return; // 只能拖方块
+  dragging = true; startIdx = i; startX = e.clientX; startY = e.clientY;
+  e.preventDefault();
+});
+window.addEventListener('pointerup', e => {
+  if (!dragging) return;
+  dragging = false;
+  const dx = e.clientX - startX, dy = e.clientY - startY;
+  if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return; // 拖动太小，忽略
+  let dir;
+  if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? { dx: 1, dy: 0 } : { dx: -1, dy: 0 };
+  else dir = dy > 0 ? { dx: 0, dy: 1 } : { dx: 0, dy: -1 };
+  doSlide(startIdx, dir);
+});
+
+// 关卡选择按钮
+document.querySelectorAll('.lv-btn').forEach(btn => {
+  btn.onclick = () => loadEmbeddedLevel(+btn.dataset.idx);
+});
+
+// 上/下一关
+document.getElementById('btnPrev').onclick = () => {
+  if (state.currentLevelIdx > 0) loadEmbeddedLevel(state.currentLevelIdx - 1);
+};
+document.getElementById('btnNext').onclick = () => {
+  if (state.currentLevelIdx < LEVELS.length - 1) loadEmbeddedLevel(state.currentLevelIdx + 1);
+};
+
+// 重新开始
+document.getElementById('btnRestart').onclick = () => {
+  if (state.raw) loadLevel(state.raw);
+};
+
+// 导入关卡
+document.getElementById('btnImport').onclick = () => fileInput.click();
+fileInput.onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data.width || !data.height || !Array.isArray(data.cells)
+          || data.cells.length !== data.width * data.height) {
+        alert('文件格式不正确：需要 width、height，以及长度匹配的 cells。');
+        return;
+      }
+      loadLevel(data);
+      // 导入自定义关卡时，清除内嵌关卡高亮
+      state.currentLevelIdx = -1;
+      updateLevelButtons();
+    } catch (err) {
+      alert('解析失败：' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  fileInput.value = '';
+};
+
+// 启动：默认载入第1关
+loadEmbeddedLevel(0);
+
+// 手机旋转 / 窗口大小变化时，重新渲染以更新格子尺寸
+window.addEventListener('resize', render);
+window.addEventListener('orientationchange', () => setTimeout(render, 120)); // 等旋转动画完成
+</script>
+</body>
+</html>

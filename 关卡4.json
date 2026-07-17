@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "name": "关卡4",
+  "width": 5,
+  "height": 5,
+  "timeLimit": 60,
+  "palette": [
+    "red",
+    "green",
+    "blue",
+    "yellow"
+  ],
+  "cells": [
+    {
+      "c": "red",
+      "n": 0
+    },
+    {
+      "c": "red",
+      "n": 0
+    },
+    {
+      "c": "green",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "red",
+      "n": 0
+    },
+    {
+      "c": "red",
+      "n": 4
+    },
+    {
+      "c": "green",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "green",
+      "n": 7
+    },
+    {
+      "c": "green",
+      "n": 0
+    },
+    {
+      "c": "green",
+      "n": 0
+    },
+    {
+      "c": null,
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "green",
+      "n": 0
+    },
+    {
+      "c": "green",
+      "n": 0
+    },
+    {
+      "c": "blue",
+      "n": 6
+    },
+    {
+      "c": "blue",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "blue",
+      "n": 0
+    },
+    {
+      "c": "blue",
+      "n": 0
+    },
+    {
+      "c": "blue",
+      "n": 0
+    },
+    {
+      "c": "blue",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 7
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "name": "关卡1",
+  "width": 4,
+  "height": 2,
+  "timeLimit": 60,
+  "palette": [
+    "red",
+    "green",
+    "blue",
+    "yellow"
+  ],
+  "cells": [
+    {
+      "c": "yellow",
+      "n": 8
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    },
+    {
+      "c": "yellow",
+      "n": 0
+    }
+  ]
+}

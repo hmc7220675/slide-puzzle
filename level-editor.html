@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>滑块填充 Puzzle · 关卡编辑器</title>
+<style>
+  /* ========== 页面基础样式 ========== */
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif;
+    margin: 0; padding: 16px; background: #f4f6f8; color: #222;
+  }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .panel {
+    background: #fff; border-radius: 10px; padding: 14px;
+    margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .row + .row { margin-top: 10px; }
+  label { font-size: 13px; color: #555; }
+  input[type=text], input[type=number] {
+    padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px;
+    font-size: 14px; width: 90px;
+  }
+  button {
+    padding: 7px 12px; border: none; border-radius: 6px;
+    background: #eef1f4; color: #333; cursor: pointer; font-size: 14px;
+  }
+  button:hover { background: #e2e6ea; }
+  button.primary { background: #3498db; color: #fff; }
+  button.primary:hover { background: #2c82c0; }
+
+  /* 调色板色块 */
+  .swatch {
+    width: 34px; height: 34px; border-radius: 8px;
+    border: 3px solid transparent; cursor: pointer;
+  }
+  .swatch.active { border-color: #222; }
+
+  /* 工具按钮 */
+  .tool { padding: 8px 14px; }
+  .tool.active { background: #3498db; color: #fff; }
+
+  /* 棋盘 */
+  #board {
+    display: grid; gap: 3px; background: #d9dee3; padding: 6px;
+    border-radius: 8px; width: max-content; user-select: none;
+  }
+  .cell {
+    width: 44px; height: 44px; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 16px; color: #fff; cursor: pointer;
+  }
+  /* 棋盘外（墙）：斜纹，明确表示“不属于棋盘的格子” */
+  .cell.void {
+    background: repeating-linear-gradient(45deg, #e3e8ec, #e3e8ec 6px, #ccd4da 6px, #ccd4da 12px);
+    box-shadow: inset 0 0 0 1px #b9c2c9;
+  }
+  .hint { font-size: 12px; color: #888; margin-top: 8px; line-height: 1.6; }
+  .status { font-size: 13px; color: #27ae60; margin-top: 8px; min-height: 18px; }
+</style>
+</head>
+<body>
+  <h1>滑块填充 Puzzle · 关卡编辑器</h1>
+
+  <!-- ===== 关卡参数 ===== -->
+  <div class="panel">
+    <div class="row">
+      <label>关卡名称</label>
+      <input type="text" id="lvName" value="关卡1">
+      <label>宽</label>
+      <input type="number" id="lvW" value="8" min="2" max="20">
+      <label>高</label>
+      <input type="number" id="lvH" value="8" min="2" max="20">
+      <label>时长(秒)</label>
+      <input type="number" id="lvTime" value="120" min="1" max="9999">
+      <button id="btnApplySize">应用尺寸</button>
+    </div>
+  </div>
+
+  <!-- ===== 工具栏 ===== -->
+  <div class="panel">
+    <div class="row">
+      <label>颜色</label>
+      <div id="palette" class="row"></div>
+    </div>
+    <div class="row">
+      <label>工具</label>
+      <button class="tool active" data-tool="paint">刷空格</button>
+      <button class="tool" data-tool="block">放方块</button>
+      <button class="tool" data-tool="erase">擦除</button>
+      <button class="tool" data-tool="outside">棋盘外</button>
+      <label>方块数量</label>
+      <input type="number" id="blockCount" value="3" min="1" max="99" style="width:64px">
+    </div>
+    <div class="row">
+      <button id="btnNew">新建/清空</button>
+      <button id="btnImport">导入 .json</button>
+      <button id="btnExport" class="primary">导出 .json</button>
+      <button id="btnCopy">复制 JSON</button>
+      <input type="file" id="fileInput" accept=".json,application/json" style="display:none">
+    </div>
+    <div class="hint">
+      用法：先选「颜色」和「工具」，再到棋盘上点（或按住拖动）格子。<br>
+      · 刷空格 = 在该格放一个同色「待填充目标」（淡色）。<br>
+      · 放方块 = 在该色格上放一个方块，可滑动的数量 = 右侧「方块数量」（现已支持 1–99 的两位数）。<br>
+      · <b>棋盘外</b> = 把格子标记为「不属于棋盘」的墙（带斜纹）。在游戏中，方块碰到它和碰到棋盘<b>边缘</b>一样：立即停下、不扣心。<br>
+      · 擦除 = 把格子清回「棋盘外」状态（与上面等价，常用于改错）。<br>
+      导出后会得到一个 .json 文件，以后用「导入」可重新打开编辑。若「导出 .json」没反应，可点「复制 JSON」手动存。
+    </div>
+    <div id="status" class="status"></div>
+  </div>
+
+  <!-- ===== 棋盘绘制区 ===== -->
+  <div class="panel">
+    <div id="board"></div>
+  </div>
+
+<script>
+// ============================================================
+// 想增加颜色？只需要在下面的 PALETTE 里加一项即可：
+//   键名(英文) : { name: '显示名', solid: '实色', pale: '淡色' }
+// 之后界面和导出数据会自动支持新颜色，无需改动其他代码。
+// ============================================================
+const PALETTE = {
+  red:    { name: '红', solid: '#e74c3c', pale: '#f9c9c2' },
+  green:  { name: '绿', solid: '#2ecc71', pale: '#c8f0d8' },
+  blue:   { name: '蓝', solid: '#3498db', pale: '#cfe8f7' },
+  yellow: { name: '黄', solid: '#f1c40f', pale: '#fbedb0' },
+};
+
+// 全局状态：记录当前关卡的全部信息
+const state = {
+  name: '关卡1',
+  width: 8,
+  height: 8,
+  timeLimit: 120,
+  currentColor: 'red',   // 当前选中的颜色键名
+  currentTool: 'paint',  // 当前工具：paint / block / erase / outside
+  blockCount: 3,         // 放方块时使用的数量
+  cells: [],             // 棋盘数据，长度 = width * height，每项 { c:颜色键名或null, n:数量 }
+};
+
+// 抓取页面元素
+const boardEl = document.getElementById('board');
+const paletteEl = document.getElementById('palette');
+const lvName = document.getElementById('lvName');
+const lvW = document.getElementById('lvW');
+const lvH = document.getElementById('lvH');
+const lvTime = document.getElementById('lvTime');
+const blockCountEl = document.getElementById('blockCount');
+const fileInput = document.getElementById('fileInput');
+
+// 工具函数：把数值限制在 [min, max]
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+// 在状态栏显示一条临时提示
+function showStatus(msg) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  setTimeout(() => { el.textContent = ''; }, 4000);
+}
+
+// 收集当前关卡数据，导出/复制都用它
+function buildLevelData() {
+  state.name = lvName.value.trim() || '关卡';
+  state.timeLimit = parseInt(lvTime.value) || 120;
+  return {
+    version: 1,
+    name: state.name,
+    width: state.width,
+    height: state.height,
+    timeLimit: state.timeLimit,
+    palette: Object.keys(PALETTE),
+    cells: state.cells.map(c => ({ c: c.c, n: c.n })) // 行优先排列
+  };
+}
+
+// 用默认值初始化棋盘数据（所有格子都是空白）
+function initCells() {
+  state.cells = [];
+  for (let i = 0; i < state.width * state.height; i++) {
+    state.cells.push({ c: null, n: 0 });
+  }
+}
+
+// 应用新的宽高：尽量保留原来重叠区域的格子内容
+function applySize() {
+  const newW = clamp(parseInt(lvW.value) || 8, 2, 20);
+  const newH = clamp(parseInt(lvH.value) || 8, 2, 20);
+  const old = state.cells, oldW = state.width, oldH = state.height;
+  state.width = newW;
+  state.height = newH;
+  const next = [];
+  for (let y = 0; y < newH; y++) {
+    for (let x = 0; x < newW; x++) {
+      if (x < oldW && y < oldH) {
+        next.push(old[y * oldW + x]); // 保留旧内容
+      } else {
+        next.push({ c: null, n: 0 }); // 新增的格子为空白
+      }
+    }
+  }
+  state.cells = next;
+  renderBoard();
+}
+
+// 绘制调色板
+function renderPalette() {
+  paletteEl.innerHTML = '';
+  Object.keys(PALETTE).forEach(key => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (key === state.currentColor ? ' active' : '');
+    sw.style.background = PALETTE[key].solid;
+    sw.title = PALETTE[key].name;
+    sw.onclick = () => { state.currentColor = key; renderPalette(); };
+    paletteEl.appendChild(sw);
+  });
+}
+
+// 绘制棋盘
+function renderBoard() {
+  boardEl.style.gridTemplateColumns = 'repeat(' + state.width + ', 44px)';
+  boardEl.innerHTML = '';
+  state.cells.forEach((cell, i) => {
+    const el = document.createElement('div');
+    el.className = 'cell';
+    el.dataset.i = i;
+    applyCellStyle(el, cell);
+    boardEl.appendChild(el);
+  });
+}
+
+// 根据格子数据设置它的外观
+function applyCellStyle(el, cell) {
+  el.className = 'cell';
+  el.style.background = '';
+  el.textContent = '';
+  if (!cell.c) {
+    // 棋盘外（墙）：不属于棋盘的格子
+    el.classList.add('void');
+  } else if (cell.n >= 1) {
+    // 带方块的格子：实色，数量>=2 时显示数字
+    el.style.background = PALETTE[cell.c].solid;
+    if (cell.n >= 2) el.textContent = cell.n;
+  } else {
+    // 待填充目标格：淡色
+    el.style.background = PALETTE[cell.c].pale;
+  }
+}
+
+// 在指定格子应用当前工具
+function applyTool(i) {
+  if (state.currentTool === 'paint') {
+    state.cells[i] = { c: state.currentColor, n: 0 };
+  } else if (state.currentTool === 'block') {
+    state.cells[i] = { c: state.currentColor, n: state.blockCount };
+  } else if (state.currentTool === 'erase' || state.currentTool === 'outside') {
+    // 擦除 / 棋盘外：都标记为“不属于棋盘的格子”（游戏中按边缘处理）
+    state.cells[i] = { c: null, n: 0 };
+  }
+  // 只更新这一个格子，不用整盘重绘
+  applyCellStyle(boardEl.children[i], state.cells[i]);
+}
+
+// 鼠标按下 + 拖动 连续绘制（像画图软件）
+let painting = false;
+boardEl.addEventListener('mousedown', e => {
+  const t = e.target.closest('.cell');
+  if (!t) return;
+  painting = true;
+  applyTool(+t.dataset.i);
+  e.preventDefault();
+});
+boardEl.addEventListener('mouseover', e => {
+  if (!painting) return;
+  const t = e.target.closest('.cell');
+  if (!t) return;
+  applyTool(+t.dataset.i);
+});
+window.addEventListener('mouseup', () => { painting = false; });
+
+// 工具按钮切换（自动适配所有 .tool 按钮，含新增的“棋盘外”）
+document.querySelectorAll('.tool').forEach(btn => {
+  btn.onclick = () => {
+    state.currentTool = btn.dataset.tool;
+    document.querySelectorAll('.tool').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  };
+});
+
+// 方块数量输入（现已支持 1–99）
+blockCountEl.oninput = () => {
+  state.blockCount = clamp(parseInt(blockCountEl.value) || 1, 1, 99);
+};
+
+// 新建 / 清空
+document.getElementById('btnNew').onclick = () => {
+  if (confirm('确定清空当前关卡？')) {
+    initCells();
+    renderBoard();
+  }
+};
+
+// 文件名里不能出现的字符，替换成下划线
+function safeName(s) { return s.replace(/[\\/:*?"<>|]/g, '_'); }
+
+// 导出为 .json 文件（用 data: URL，本地双击打开也能稳定下载）
+document.getElementById('btnExport').onclick = () => {
+  const data = buildLevelData();
+  const json = JSON.stringify(data, null, 2);
+  const a = document.createElement('a');
+  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+  a.download = safeName(state.name) + '.json';
+  document.body.appendChild(a); // 先放进页面再点击，避免被浏览器拦截
+  a.click();
+  document.body.removeChild(a);
+  showStatus('✅ 已导出「' + safeName(state.name) + '.json」，请在浏览器下载目录查看');
+};
+
+// 复制 JSON 到剪贴板（下载被拦截时的备用方案）
+document.getElementById('btnCopy').onclick = () => {
+  const data = buildLevelData();
+  const json = JSON.stringify(data, null, 2);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(json).then(
+      () => showStatus('✅ 关卡 JSON 已复制到剪贴板，可粘贴到记事本存为 .json'),
+      () => fallbackCopy(json)
+    );
+  } else {
+    fallbackCopy(json);
+  }
+};
+function fallbackCopy(json) {
+  const ta = document.createElement('textarea');
+  ta.value = json;
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); showStatus('✅ 关卡 JSON 已复制，可粘贴保存'); }
+  catch (e) { showStatus('⚠️ 复制失败，请手动在导入框查看或联系协助'); }
+  document.body.removeChild(ta);
+}
+
+// 导入 .json 文件
+document.getElementById('btnImport').onclick = () => fileInput.click();
+fileInput.onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      // 基础校验
+      if (!data.width || !data.height || !Array.isArray(data.cells)
+          || data.cells.length !== data.width * data.height) {
+        alert('文件格式不正确：需要 width、height，以及长度匹配的 cells。');
+        return;
+      }
+      state.name = data.name || '关卡';
+      state.width = data.width;
+      state.height = data.height;
+      state.timeLimit = data.timeLimit || 120;
+      state.cells = data.cells.map(c => ({ c: (c.c === undefined ? null : c.c), n: (c.n || 0) }));
+      // 把数据同步回界面输入框
+      lvName.value = state.name;
+      lvW.value = state.width;
+      lvH.value = state.height;
+      lvTime.value = state.timeLimit;
+      renderBoard();
+      showStatus('✅ 已导入关卡：' + state.name);
+    } catch (err) {
+      alert('解析失败：' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  fileInput.value = ''; // 允许重复导入同一个文件
+};
+
+// 应用尺寸按钮
+document.getElementById('btnApplySize').onclick = applySize;
+
+// 首次启动：初始化并显示
+initCells();
+renderPalette();
+renderBoard();
+</script>
+</body>
+</html>
